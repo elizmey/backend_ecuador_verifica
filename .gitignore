@@ -7,15 +7,10 @@ __pycache__/
 # Node
 node_modules/
 
-# Tests / cobertura
-test_ecverifica.db
-test_uploads/
-
 # Entorno
 .env
 
-# Datos
-uploads/
+# Logs
 logs/
 *.log
 
@@ -23,10 +18,6 @@ logs/
 .pytest_cache/
 .coverage
 htmlcov/
-
-# DB local
-*.sqlite3
-*.db
 
 # IDE
 .idea/

@@ -1,9 +1,10 @@
-# VeriIA Ecuador — Backend
+# VeriIA Ecuador — Backend (Verificador de desinformación)
 
-Backend de la plataforma de verificación de contenidos **VeriIA Ecuador** (anti-desinformación).
-API REST construida con **Python + FastAPI**, escalable con **Docker**, documentada con **Swagger** y conectada a modelos de **IA** (NLP, Computer Vision y LLM).
+API de **Verificación de desinformación en tiempo real** para **VeriIA Ecuador**.
 
-> Estructura inspirada en el backend de Orion (`stats-service`). El código de Orion no se toca.
+> **Sin base de datos**: todo corre 100% en memoria. Nada se guarda ni se persiste.
+> Ingresa una afirmación → análisis NLP + cruce con base de conocimiento y fuentes
+> confiables → veredicto con explicación.
 
 ---
 
@@ -13,165 +14,109 @@ API REST construida con **Python + FastAPI**, escalable con **Docker**, document
 |---|---|
 | API | FastAPI + Uvicorn |
 | Documentación | Swagger UI (`/docs`) + ReDoc (`/redoc`) |
-| Base de datos | PostgreSQL 16 (SQLAlchemy 2 + psycopg3) |
-| Autenticación | OAuth2 Password flow + JWT (bcrypt para hashing) |
-| Tareas asíncronas | Celery + Redis (modo `inline` para desarrollo) |
-| Migraciones | Alembic |
+| IA | Pluggable: `mock` (default) · `ollama` · `openai` · `google` |
+| Almacenamiento | **En memoria** (no hay base de datos) |
 | Tests | pytest + TestClient |
 | Infraestructura | Docker / docker-compose |
 
 ---
 
-## Estructura del proyecto
+## Estructura
 
 ```
 BACKEND/
 ├── app/
-│   ├── main.py                  # App FastAPI (CORS, routers, lifespan)
-│   ├── core/                    # config, database, security (JWT/bcrypt), deps
-│   ├── models/                  # ORM: User, VerificationRequest, AnalysisResult, NewsArticle, Source
-│   ├── schemas/                 # Pydantic: auth, user, request, analysis, news, source, stats
-│   ├── api/v1/                  # Routers: auth, users, requests, ai, news, sources, stats
-│   ├── services/
-│   │   ├── user_service.py
-│   │   ├── request_service.py   # CRUD + dispatch de procesamiento
-│   │   ├── news_service.py      # Noticias + vinculación con solicitudes
-│   │   ├── source_verification.py  # Cruzado de texto contra fuentes confiables
-│   │   ├── stats_service.py     # Agregados para el dashboard
-│   │   ├── storage.py           # Upload de imágenes
-│   │   └── ai/
-│   │       ├── base.py          # Contrato de proveedores de IA
-│   │       ├── provider_factory.py
-│   │       ├── providers/       # mock | ollama | openai | google
-│   │       ├── nlp.py           # Análisis de texto
-│   │       ├── vision.py        # Computer Vision
-│   │       ├── llm.py           # Explicación de resultados
-│   │       └── pipeline.py      # Orquestación NLP → Fuentes → Vision → LLM
-│   └── workers/                 # Celery app + tareas
-├── migrations/                  # Alembic (env.py + script.py.mako)
-├── scripts/                     # Utilidades (ensure-env.mjs)
-├── tests/                       # pytest (health, auth, requests, ai)
+│   ├── main.py                  # App FastAPI (CORS, /health, routers)
+│   ├── core/config.py           # Configuración por variables de entorno
+│   ├── data/knowledge.py        # Base de conocimiento EN MEMORIA (hechos + fuentes)
+│   ├── schemas/verify.py        # Pydantic: request / response del verificador
+│   ├── api/v1/
+│   │   ├── router.py            # Solo incluye el verificador
+│   │   └── verify.py            # Endpoints: /check, /verdicts, /sources, /known-claims
+│   └── services/
+│       ├── verifier.py          # Orquestación: NLP → hechos → fuentes → veredicto
+│       └── ai/                  # Proveedores de IA (base, nlp, llm, vision, providers)
+├── scripts/ensure-env.mjs       # Crea .env y verifica dependencias
+├── tests/                       # pytest (health + verificador)
 ├── Dockerfile
 ├── docker-compose.yml
-├── package.json                 # Comandos npm/pnpm: dev, start, test
-├── dev.bat / dev.ps1            # Desarrollo local (Windows)
-├── alembic.ini
+├── package.json                 # Comandos npm/pnpm
+├── dev.bat / dev.ps1
 └── requirements.txt
 ```
 
 ---
 
-## Puesta en marcha rápida (desarrollo local)
+## Puesta en marcha (desarrollo local)
 
-Requisitos: Python 3.12+ y Node.js (pnpm o npm). **No se usa venv**: las dependencias de Python se instalan en el entorno de usuario (`py -m pip install --user`).
+Requisitos: Python 3.12+ y Node.js (pnpm o npm). **No se usa venv ni base de datos.**
 
-**Windows:**
 ```powershell
 pnpm install      # o npm install (instala dependencias de Python automáticamente)
-pnpm run dev      # inicia con recarga automática (--reload)
+pnpm run dev      # inicia en http://localhost:3008 con recarga automática
 pnpm run start    # inicia sin recarga
 ```
-
-Los scripts `dev`/`start` generan automáticamente un `.env` con SQLite + proveedor IA `mock` para que funcione sin Docker ni modelos.
-
-Servidor: **http://localhost:8000** · Swagger: **http://localhost:8000/docs**
 
 Comandos disponibles (`pnpm run <script>`):
 
 | Script | Descripción |
 |---|---|
 | `setup` | Instala las dependencias de Python (usuario global) |
-| `dev` | Inicia uvicorn con recarga automática |
-| `start` | Inicia uvicorn sin recarga |
+| `dev` | Inicia uvicorn en el puerto **3008** con recarga |
+| `start` | Inicia uvicorn en el puerto **3008** sin recarga |
 | `test` | Ejecuta la suite de pytest |
-| `migrate:upgrade` / `migrate:make` | Aplica / genera migraciones de Alembic |
 
-> Si ya tienes PostgreSQL corriendo, edita `.env` y usa `DATABASE_URL=postgresql+psycopg://usuario:pass@localhost:5432/veriia`. Las tablas se crean automáticamente al arrancar (para producción usa Alembic, ver abajo).
-
----
-
-## Docker (producción / escalable)
-
-```bash
-docker compose up --build -d
-```
-
-Levanta:
-- `postgres` (PostgreSQL 16) con volumen persistente
-- `redis` (broker de tareas)
-- `backend` (API FastAPI, puerto **8000**)
-- `worker` (Celery para procesamiento IA asíncrono)
-
-Para usar el procesamiento asíncrono con Celery:
-```bash
-WORKER_BACKEND=celery docker compose up --build -d
-```
-
-El API **por defecto** procesa en línea (modo `inline`, hilo interno); en producción recomienda `WORKER_BACKEND=celery` y escalar el worker.
+Servidor: **http://localhost:3008** · Swagger: **http://localhost:3008/docs**
 
 ---
 
-## Documentación (Swagger)
-
-- **Swagger UI**: `GET /docs`
-- **ReDoc**: `GET /redoc`
-- **OpenAPI JSON**: `GET /openapi.json`
-
-Para probar los endpoints autenticados usa el botón **Authorize** con email + contraseña (OAuth2 password flow).
-
----
-
-## Roles y permisos
-
-| Rol | Permisos |
-|---|---|
-| `user` | Crear/ver/eliminar **sus** solicitudes y noticias, ejecutar el pipeline, usar endpoints de IA y consultar fuentes |
-| `verifier` | Todo lo de `user` + fijar veredicto final de cualquier solicitud + estadísticas del dashboard |
-| `admin` | Todo lo de `verifier` + gestión de usuarios y de fuentes confiables (crear/editar/eliminar) |
-
-El primer admin se crea con el script de seed:
-```bash
-py -m app.scripts.seed_admin
-```
-Usa `ADMIN_EMAIL`, `ADMIN_FULL_NAME` y `ADMIN_PASSWORD` de `.env`. También puedes crearlo manualmente:
-```python
-from app.core.database import SessionLocal
-from app.services.user_service import create_user
-from app.models.user import UserRole
-db = SessionLocal()
-create_user(db, "admin@veriia.ec", "Administrador", "password123", role=UserRole.admin)
-```
-
----
-
-## Endpoints principales
+## Endpoints
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| POST | `/api/v1/auth/register` | Registrar usuario |
-| POST | `/api/v1/auth/login` | Iniciar sesión (OAuth2) |
-| GET | `/api/v1/auth/me` | Usuario actual |
-| GET/PATCH/DELETE | `/api/v1/users` | Gestión de usuarios (admin) |
-| POST | `/api/v1/requests` | Crear solicitud (form-data: `claim` + imágenes) |
-| GET | `/api/v1/requests` | Listar solicitudes |
-| GET | `/api/v1/requests/{id}` | Detalle con análisis |
-| POST | `/api/v1/requests/{id}/process` | Ejecutar pipeline IA |
-| POST | `/api/v1/requests/{id}/verdict` | Fijar veredicto (verifier/admin) |
-| POST | `/api/v1/news` | Registrar una noticia |
-| GET | `/api/v1/news` | Listar noticias |
-| GET | `/api/v1/news/{id}` | Detalle con solicitudes vinculadas |
-| POST | `/api/v1/news/{id}/process` | Analizar la noticia (crea solicitud vinculada) |
-| GET | `/api/v1/sources` | Listar fuentes confiables |
-| POST/PATCH/DELETE | `/api/v1/sources` | Gestión de fuentes (admin) |
-| GET | `/api/v1/sources/match/text?text=...` | Cruzar texto contra fuentes |
-| GET | `/api/v1/stats/overview` | Resumen del dashboard (verifier/admin) |
-| GET | `/api/v1/stats/trends?days=30` | Tendencia de solicitudes por día |
-| GET | `/api/v1/stats/top-sources` | Fuentes más referenciadas |
-| POST | `/api/v1/ai/nlp` | Análisis NLP de texto |
-| POST | `/api/v1/ai/vision` | Análisis de imagen (CV) |
-| POST | `/api/v1/ai/explain` | Explicación LLM |
-| GET | `/api/v1/ai/health` | Estado del proveedor IA |
+| POST | `/api/v1/verify/check` | **Verifica una afirmación** (body: `{"claim": "..."}`) |
+| GET | `/api/v1/verify/verdicts` | Lista los veredictos posibles |
+| GET | `/api/v1/verify/sources` | Lista las fuentes confiables de referencia |
+| GET | `/api/v1/verify/known-claims` | Lista las desinformaciones documentadas en memoria |
 | GET | `/health` | Health check |
+
+### Ejemplo — `POST /api/v1/verify/check`
+
+```json
+// Request
+{ "claim": "Las vacunas causan autismo" }
+
+// Response (resumen)
+{
+  "claim": "Las vacunas causan autismo",
+  "verdict": "falso",
+  "verdict_label": "Falso",
+  "confidence": 0.97,
+  "explanation": "Estudios científicos internacionales...",
+  "checked_at": "2026-08-11T00:00:00Z",
+  "nlp": { "language": "es", "sentiment": "...", "claims": [], "entities": [], "topics": [] },
+  "source_matches": [],
+  "evidence": {
+    "fact_used": "vacunas-autismo",
+    "fact_category": "salud",
+    "negation_detected": false,
+    "recommended_sources": [ { "name": "...", "url": "...", "category": "oficial" } ]
+  }
+}
+```
+
+El verificador también entiende negaciones: `"Las vacunas no causan autismo"` devuelve `verdadero`.
+
+---
+
+## Veredictos
+
+| Código | Etiqueta | Cuándo |
+|---|---|---|
+| `verdadero` | Verdadero | Coincide con un hecho documentado (o niega una desinformación) |
+| `falso` | Falso | Coincide con una desinformación documentada |
+| `enganyoso` | Engañoso | Detecta lenguaje manipulativo o mezcla de datos sin contexto |
+| `sin_evidencia` | Sin evidencia suficiente | No hay coincidencia con casos documentados |
 
 ---
 
@@ -182,18 +127,22 @@ La capa de IA es **pluggable** vía `AI_PROVIDER` en `.env`:
 | Proveedor | Descripción | Requisitos |
 |---|---|---|
 | `mock` *(default)* | Respuestas deterministas para desarrollo/tests | Ninguno |
-| `ollama` | Modelos locales (NLP, visión con `llava`, LLM) | Ollama corriendo en `OLLAMA_BASE_URL` |
+| `ollama` | Modelos locales | Ollama corriendo en `OLLAMA_BASE_URL` |
 | `openai` | OpenAI o compatible (OpenRouter, Azure, etc.) | `OPENAI_API_KEY` |
-| `google` | Gemini (Google AI) | `GOOGLE_AI_API_KEY` + `AI_PROVIDER=google` |
+| `google` | Gemini (Google AI) | `GOOGLE_AI_API_KEY` |
 
-Flujo del pipeline de una solicitud (`POST /requests/{id}/process`):
+El NLP alimenta el análisis (claims, sentimiento, entidades, temas, señales de
+manipulación); el veredicto final lo determina la base de conocimiento en memoria.
 
-1. **NLP** → analiza el texto de la afirmación (claims, sentimiento, entidades, temas, señales de manipulación).
-2. **Fuentes** → cruza el texto contra las fuentes confiables (`sources`) y guarda `source_references`.
-3. **Computer Vision** → analiza cada imagen (score de manipulación, deepfake, OCR, objetos).
-4. **LLM** → genera una explicación en lenguaje natural + veredicto recomendado + confianza, considerando las fuentes encontradas.
+---
 
-Cada etapa se guarda en `analysis_results` y la solicitud queda con estado `completed`/`failed`.
+## Docker
+
+```bash
+docker compose up --build -d
+```
+
+Levanta solo la API en el puerto **3008**. Sin PostgreSQL, sin Redis, sin base de datos.
 
 ---
 
@@ -203,29 +152,13 @@ Cada etapa se guarda en `analysis_results` y la solicitud queda con estado `comp
 pnpm run test
 ```
 
-Cubren: health/Swagger, registro y login, CRUD de solicitudes, permisos por rol, pipeline completo (NLP+Vision+LLM) y endpoints de IA (con proveedor mock).
+Cubren: health/Swagger, verificación de afirmaciones falsas/verdaderas/engañosas,
+negaciones, afirmaciones desconocidas, cruce de fuentes, y los endpoints auxiliares.
 
 ---
 
-## Migraciones (Alembic)
+## Conexión con el frontend
 
-El arranque crea las tablas automáticamente (ideal para dev). Para gestión de esquema en producción:
-
-```bash
-# Generar una migración nueva a partir de los modelos
-pnpm run migrate:make -- "descripcion"
-
-# Aplicar migraciones
-pnpm run migrate:upgrade
-```
-
-`migrations/env.py` ya carga la URL de `app.core.config` (no depende de `.env` manual).
-
----
-
-## Escalabilidad
-
-- **API stateless** → múltiples workers de uvicorn o réplicas detrás de un balanceador.
-- **Tareas asíncronas** → Celery + Redis; el worker se escala independientemente (p.ej. `--concurrency` o varias réplicas).
-- **Proveedores de IA** → abstraídos; cambiar de modelo local a nube solo requiere variables de entorno.
-- **Volúmenes** → `uploads` (imágenes) y `logs` compartidos entre API y worker en Docker.
+- **Base URL**: `http://localhost:3008`
+- **Prefijo API**: `/api/v1`
+- **CORS**: abierto por defecto (`CORS_ORIGINS=*`) — el frontend puede llamar desde cualquier origen.

@@ -6,25 +6,20 @@ const root = process.cwd();
 
 const envTemplate = `ENV=development
 DEBUG=true
-SECRET_KEY=dev-only-change-me
 CORS_ORIGINS=*
-DATABASE_URL=sqlite:///./ecverifica.db
-UPLOAD_DIR=uploads
 AI_PROVIDER=mock
 AI_ENABLED=true
-WORKER_BACKEND=inline
-PORT=8000
+PORT=3008
 `;
 
 const envPath = join(root, ".env");
 if (!existsSync(envPath)) {
   writeFileSync(envPath, envTemplate, { encoding: "utf8" });
-  console.log("[veriia] .env creado (SQLite + IA mock). Editalo si necesitas PostgreSQL u otro proveedor.");
+  console.log("[veriia] .env creado (IA mock, puerto 3008). Editalo si necesitas otro proveedor de IA.");
 } else {
   console.log("[veriia] .env ya existe.");
 }
 
-mkdirSync(join(root, "uploads"), { recursive: true });
 mkdirSync(join(root, "logs"), { recursive: true });
 
 try {

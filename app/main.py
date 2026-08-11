@@ -1,35 +1,25 @@
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
-from app.core.database import init_db
 
 settings = get_settings()
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    init_db()
-    yield
 
 
 app = FastAPI(
     title=settings.APP_NAME,
     description=(
-        "Backend de VeriIA Ecuador: plataforma tecnológica contra la desinformación. "
-        "Gestiona usuarios, análisis de noticias y textos, reportes ciudadanos, "
-        "verificación de fuentes y comunicación con modelos de IA "
-        "(NLP, Computer Vision y LLM para explicación de resultados).\n\n"
-        "Usa el botón **Authorize** para autenticarte con OAuth2 (email + contraseña)."
+        "Backend de VeriIA Ecuador — Verificador de desinformación en tiempo real. "
+        "Ingresa una afirmación y obtén análisis NLP, cruce con fuentes confiables y "
+        "un veredicto con explicación. **100% en memoria: no se guarda nada, no usa "
+        "base de datos.**\n\n"
+        "Endpoint principal: `POST /api/v1/verify/check`"
     ),
     version=settings.APP_VERSION,
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
-    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -51,5 +41,5 @@ def health() -> dict:
         "version": settings.APP_VERSION,
         "env": settings.ENV,
         "ai_provider": settings.AI_PROVIDER,
-        "worker_backend": settings.WORKER_BACKEND,
+        "storage": "memory",
     }
