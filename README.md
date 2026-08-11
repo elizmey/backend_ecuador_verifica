@@ -30,11 +30,14 @@ BACKEND/
 │   ├── core/config.py           # Configuración por variables de entorno
 │   ├── data/knowledge.py        # Base de conocimiento EN MEMORIA (hechos + fuentes)
 │   ├── schemas/verify.py        # Pydantic: request / response del verificador
+│   ├── schemas/detect.py        # Pydantic: detección de contenido sintético
 │   ├── api/v1/
-│   │   ├── router.py            # Solo incluye el verificador
-│   │   └── verify.py            # Endpoints: /check, /verdicts, /sources, /known-claims
+│   │   ├── router.py            # Verificador + detección de imágenes
+│   │   ├── verify.py            # Endpoints: /check, /verdicts, /sources, /known-claims
+│   │   └── detect.py            # Endpoints: /image, /verdicts, /health
 │   └── services/
 │       ├── verifier.py          # Orquestación: NLP → hechos → fuentes → veredicto
+│       ├── detection_service.py # Imagen → proveedor → clasificación → veredicto
 │       └── ai/                  # Proveedores de IA (base, nlp, llm, vision, providers)
 ├── scripts/ensure-env.mjs       # Crea .env y verifica dependencias
 ├── tests/                       # pytest (health + verificador)
@@ -72,6 +75,8 @@ Servidor: **http://localhost:3008** · Swagger: **http://localhost:3008/docs**
 
 ## Endpoints
 
+### Verificador de desinformación
+
 | Método | Ruta | Descripción |
 |---|---|---|
 | POST | `/api/v1/verify/check` | **Verifica una afirmación** (body: `{"claim": "..."}`) |
@@ -79,6 +84,46 @@ Servidor: **http://localhost:3008** · Swagger: **http://localhost:3008/docs**
 | GET | `/api/v1/verify/sources` | Lista las fuentes confiables de referencia |
 | GET | `/api/v1/verify/known-claims` | Lista las desinformaciones documentadas en memoria |
 | GET | `/health` | Health check |
+
+### Detección de contenido sintético (imágenes)
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| POST | `/api/v1/detect/image` | **Sube una imagen** y detecta manipulación/deepfake (multipart: `file` + opcional `claim`) |
+| GET | `/api/v1/detect/verdicts` | Clasificaciones posibles de una imagen |
+| GET | `/api/v1/detect/health` | Estado del proveedor de visión |
+
+```bash
+# Ejemplo de subida
+curl -X POST http://localhost:3008/api/v1/detect/image \
+  -F "file=@foto.png;type=image/png" \
+  -F "claim=Imagen de un supuesto video"
+```
+
+**Respuesta** (resumen):
+
+```json
+{
+  "filename": "foto.png",
+  "verdict": "sospechosa",
+  "verdict_label": "Sospechosa",
+  "risk_score": 0.45,
+  "manipulation_score": 0.4,
+  "deepfake_score": 0.45,
+  "ocr_text": "...",
+  "objects": [{ "label": "person", "confidence": 0.93 }],
+  "signals": ["bordes_inconsistentes"],
+  "explanation": "...",
+  "provider": "mock",
+  "checked_at": "2026-08-11T00:00:00Z",
+  "processing_ms": 12,
+  "claim": "Imagen de un supuesto video"
+}
+```
+
+**Clasificaciones**: `autentica` (riesgo < 0.3) · `sospechosa` (0.3–0.6) · `manipulada` (≥ 0.6). El archivo se procesa en memoria y **se elimina al terminar** — nada se persiste.
+
+El proveedor `mock` calcula los scores a partir del contenido del archivo, por lo que cada imagen produce un resultado distinto y determinista (ideal para desarrollo y demo).
 
 ### Ejemplo — `POST /api/v1/verify/check`
 
@@ -153,7 +198,8 @@ pnpm run test
 ```
 
 Cubren: health/Swagger, verificación de afirmaciones falsas/verdaderas/engañosas,
-negaciones, afirmaciones desconocidas, cruce de fuentes, y los endpoints auxiliares.
+negaciones, afirmaciones desconocidas, cruce de fuentes, y detección de imágenes
+(subida válida, extensiones inválidas, clasificaciones y limpieza de archivos temporales).
 
 ---
 

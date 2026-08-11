@@ -13,6 +13,9 @@ class MockAIProvider(BaseAIProvider):
     def _seed(self, value: str) -> int:
         return int(hashlib.sha256(value.encode("utf-8")).hexdigest()[:8], 16)
 
+    def _seed_bytes(self, data: bytes) -> int:
+        return int(hashlib.sha256(data).hexdigest()[:8], 16)
+
     def _confidence(self, value: str) -> float:
         return round(0.5 + (self._seed(value) % 40) / 100, 2)
 
@@ -60,18 +63,41 @@ class MockAIProvider(BaseAIProvider):
             raise FileNotFoundError(f"No se encontró la imagen: {image_path}")
 
         size = os.path.getsize(image_path)
-        seed = self._seed(image_path)
+        with open(image_path, "rb") as f:
+            data = f.read()
+
+        seed = self._seed_bytes(data)
+        manipulation = round(0.05 + (seed % 85) / 100, 2)
+        deepfake = round(0.05 + ((seed >> 16) % 80) / 100, 2)
+        risk = round(max(manipulation, deepfake), 2)
+
+        signals: list[str] = []
+        if manipulation >= 0.6:
+            signals.append("artefactos_de_compresion")
+        if deepfake >= 0.6:
+            signals.append("inconsistencias_faciales")
+        if manipulation >= 0.3:
+            signals.append("bordes_inconsistentes")
+        if seed % 2 == 0:
+            signals.append("metadatos_ausentes")
 
         return {
             "provider": self.name,
-            "manipulation_score": round((seed % 30) / 100, 2),
-            "deepfake_score": round((seed % 15) / 100, 2),
+            "manipulation_score": manipulation,
+            "deepfake_score": deepfake,
+            "risk_score": risk,
             "ocr_text": "Texto de ejemplo extraído de la imagen",
             "objects": [
-                {"label": "person", "confidence": 0.93},
+                {"label": "person", "confidence": round(0.6 + (seed % 30) / 100, 2)},
                 {"label": "background", "confidence": 0.88},
             ],
-            "metadata": {"file_size_bytes": size},
+            "signals": signals,
+            "metadata": {
+                "file_size_bytes": size,
+                "format": "image/png",
+                "resolution": "1920x1080",
+                "dimensions": [1920, 1080],
+            },
         }
 
     async def explain(

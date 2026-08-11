@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # ── CORS ───────────────────────────────────────────────────
     CORS_ORIGINS: str = "*"
 
+    # ── Uploads (solo en memoria/temporal, nada se persiste) ──
+    MAX_UPLOAD_SIZE_MB: int = 10
+    ALLOWED_IMAGE_EXTENSIONS: str = ".jpg,.jpeg,.png,.webp"
+
     # ── IA ─────────────────────────────────────────────────────
     AI_PROVIDER: str = "mock"  # mock | ollama | openai | google
     AI_ENABLED: bool = True
@@ -46,6 +50,14 @@ class Settings(BaseSettings):
         if self.CORS_ORIGINS.strip() == "*":
             return ["*"]
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def allowed_image_extensions_list(self) -> list[str]:
+        return [
+            e.strip().lower()
+            for e in self.ALLOWED_IMAGE_EXTENSIONS.split(",")
+            if e.strip()
+        ]
 
 
 @lru_cache
