@@ -1,0 +1,18 @@
+{
+  "name": "veriia-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Backend FastAPI de VeriIA Ecuador",
+  "scripts": {
+    "setup": "py -m pip install --user -r requirements.txt",
+    "postinstall": "py -m pip install --user -r requirements.txt --quiet || exit 0",
+    "prestart": "node scripts/ensure-env.mjs",
+    "start": "py -m uvicorn app.main:app --host 0.0.0.0 --port 8000",
+    "predev": "node scripts/ensure-env.mjs",
+    "dev": "py -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "test": "py -m pytest -q",
+    "migrate:upgrade": "py -m alembic upgrade head",
+    "migrate:make": "py -m alembic revision --autogenerate -m",
+    "migrate:downgrade": "py -m alembic downgrade -1"
+  }
+}

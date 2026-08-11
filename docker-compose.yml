@@ -1,0 +1,99 @@
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: veriia
+      POSTGRES_PASSWORD: veriia_dev
+      POSTGRES_DB: veriia
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U veriia -d veriia"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis (broker de tareas) ───────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── API (FastAPI) ──────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      ENV: production
+      DEBUG: "false"
+      SECRET_KEY: ${SECRET_KEY:-veriia_jwt_change_in_production}
+      DATABASE_URL: postgresql+psycopg://veriia:veriia_dev@postgres:5432/veriia
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      AI_ENABLED: "true"
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      WORKER_BACKEND: ${WORKER_BACKEND:-inline}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      REDIS_URL: redis://redis:6379/0
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - uploads:/app/uploads
+      - backend-logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # ── Worker Celery (procesamiento IA asíncrono) ─────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A app.workers.celery_app:celery_app worker --loglevel=info --concurrency=${WORKER_CONCURRENCY:-2}
+    restart: unless-stopped
+    environment:
+      ENV: production
+      SECRET_KEY: ${SECRET_KEY:-veriia_jwt_change_in_production}
+      DATABASE_URL: postgresql+psycopg://veriia:veriia_dev@postgres:5432/veriia
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      AI_ENABLED: "true"
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      WORKER_BACKEND: celery
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - uploads:/app/uploads
+      - backend-logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  pgdata:
+  uploads:
+  backend-logs:
