@@ -23,7 +23,7 @@ if (!existsSync(envPath)) {
 mkdirSync(join(root, "logs"), { recursive: true });
 
 try {
-  execFileSync("py", ["-c", "import uvicorn, fastapi, sqlalchemy"], { stdio: "ignore" });
+  execFileSync("py", ["-c", "import uvicorn, fastapi"], { stdio: "ignore" });
 } catch {
   console.error("\n[veriia] Faltan dependencias de Python. Ejecuta:\n    pnpm install\n  o\n    pnpm run setup\n");
   process.exit(1);

@@ -4,6 +4,92 @@ No usa base de datos: los hechos verificados y las fuentes confiables
 viven en este módulo y se consultan únicamente en tiempo de ejecución.
 """
 
+PROJECT_INFO = (
+    "VeriIA Ecuador es una plataforma ecuatoriana que combate la desinformación "
+    "con verificación asistida por IA, monitoreo de narrativas y herramientas "
+    "gratuitas para medios, periodistas y ciudadanía."
+)
+
+INITIATIVES = [
+    {
+        "slug": "redacciones",
+        "title": "Redacciones",
+        "short": (
+            "Agentes de IA para que las redacciones resuman documentos oficiales, "
+            "generen contexto y monitoreen fuentes."
+        ),
+    },
+    {
+        "slug": "verificacion",
+        "title": "Verificación",
+        "short": (
+            "Herramientas para detectar imágenes, audios y videos manipulados o "
+            "generados con inteligencia artificial."
+        ),
+    },
+    {
+        "slug": "monitoreo-de-narrativas",
+        "title": "Monitoreo de narrativas",
+        "short": (
+            "Rastreo de contenidos virales, narrativas emergentes y campañas "
+            "coordinadas de desinformación."
+        ),
+    },
+    {
+        "slug": "alertas-colaborativas",
+        "title": "Alertas colaborativas",
+        "short": (
+            "Intercambio de alertas, verificaciones e información entre medios "
+            "en tiempo real."
+        ),
+    },
+    {
+        "slug": "analisis-de-propuestas",
+        "title": "Análisis de propuestas",
+        "short": (
+            "Comparación de planes de gobierno y discursos para hacerlos más "
+            "comprensibles para la ciudadanía."
+        ),
+    },
+    {
+        "slug": "adaptacion-para-medios-locales",
+        "title": "Adaptación para medios locales",
+        "short": (
+            "Contenidos para radios, WhatsApp, lenguas indígenas y formatos accesibles."
+        ),
+    },
+    {
+        "slug": "alfabetizacion-mediatica",
+        "title": "Alfabetización mediática",
+        "short": (
+            "Videojuegos, simuladores y experiencias para fortalecer el pensamiento crítico."
+        ),
+    },
+    {
+        "slug": "visualizacion-de-datos",
+        "title": "Visualización de datos",
+        "short": (
+            "Recursos para analizar y explicar datos electorales y la circulación "
+            "de desinformación."
+        ),
+    },
+    {
+        "slug": "agentes-conversacionales",
+        "title": "Agentes conversacionales",
+        "short": (
+            "Respuestas ciudadanas construidas con información oficial y fuentes verificadas."
+        ),
+    },
+    {
+        "slug": "fortalecimiento-de-medios-locales",
+        "title": "Fortalecimiento de medios locales",
+        "short": (
+            "Automatización, monitoreo y producción asistida para medios regionales "
+            "y comunitarios con recursos limitados."
+        ),
+    },
+]
+
 VERDICTS = {
     "verdadero": {
         "label": "Verdadero",
@@ -298,5 +384,65 @@ TRUSTED_SOURCES = [
         "domain": "nasa.gov",
         "url": "https://www.nasa.gov",
         "category": "internacional",
+    },
+    {
+        "name": "The Times",
+        "domain": "thetimes.com",
+        "url": "https://www.thetimes.com",
+        "category": "prensa_internacional",
+    },
+    {
+        "name": "BBC News",
+        "domain": "bbc.com",
+        "url": "https://www.bbc.com",
+        "category": "prensa_internacional",
+    },
+    {
+        "name": "BBC News",
+        "domain": "bbc.co.uk",
+        "url": "https://www.bbc.co.uk",
+        "category": "prensa_internacional",
+    },
+    {
+        "name": "Reuters",
+        "domain": "reuters.com",
+        "url": "https://www.reuters.com",
+        "category": "prensa_internacional",
+    },
+    {
+        "name": "Associated Press",
+        "domain": "apnews.com",
+        "url": "https://apnews.com",
+        "category": "prensa_internacional",
+    },
+    {
+        "name": "The New York Times",
+        "domain": "nytimes.com",
+        "url": "https://www.nytimes.com",
+        "category": "prensa_internacional",
+    },
+    {
+        "name": "The Guardian",
+        "domain": "theguardian.com",
+        "url": "https://www.theguardian.com",
+        "category": "prensa_internacional",
+    },
+    {
+        "name": "CNN",
+        "domain": "cnn.com",
+        "url": "https://www.cnn.com",
+        "category": "prensa_internacional",
+    },
+    {
+        "name": "France 24",
+        "domain": "france24.com",
+        "url": "https://www.france24.com",
+        "category": "prensa_internacional",
+    },
+    {
+        "name": "Deutsche Welle",
+        "domain": "dw.com",
+        "url": "https://www.dw.com",
+        "category": "prensa_internacional",
     },
 ]

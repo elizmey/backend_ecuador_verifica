@@ -14,7 +14,13 @@ class BaseAIProvider(ABC):
         """Análisis NLP de un texto (claims, sentimiento, temas, entidades)."""
 
     @abstractmethod
-    async def analyze_image(self, image_path: str) -> dict[str, Any]:
+    async def analyze_image(
+        self,
+        image_path: str,
+        *,
+        filename: str | None = None,
+        claim: str | None = None,
+    ) -> dict[str, Any]:
         """Análisis de Computer Vision de una imagen (manipulación, OCR, objetos)."""
 
     @abstractmethod

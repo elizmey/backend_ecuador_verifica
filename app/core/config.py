@@ -42,8 +42,8 @@ class Settings(BaseSettings):
 
     GOOGLE_AI_API_KEY: str = ""
     GOOGLE_AI_BASE_URL: str = "https://generativelanguage.googleapis.com"
-    GOOGLE_AI_TEXT_MODEL: str = "gemini-2.0-flash"
-    GOOGLE_AI_VISION_MODEL: str = "gemini-2.0-flash"
+    GOOGLE_AI_TEXT_MODEL: str = "gemini-flash-lite-latest"
+    GOOGLE_AI_VISION_MODEL: str = "gemini-3.5-flash"
 
     @property
     def cors_origins_list(self) -> list[str]:

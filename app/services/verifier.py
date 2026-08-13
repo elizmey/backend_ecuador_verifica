@@ -10,7 +10,7 @@ import time
 import unicodedata
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from app.data.knowledge import KNOWN_CLAIMS, TRUSTED_SOURCES, VERDICTS
 from app.services.ai.nlp import analyze_text
@@ -31,6 +31,11 @@ NEGATION_PATTERNS = (
     " no cura",
 )
 
+_URL_RE = re.compile(r"https?://[^\s]+", re.IGNORECASE)
+
+# Señales NLP demasiado débiles para marcar "engañoso" por sí solas
+_WEAK_SIGNALS = {"texto_muy_corto", "solo_enlace"}
+
 
 def _norm(text: str) -> str:
     """Minúsculas y sin tildes, para comparar de forma robusta."""
@@ -46,8 +51,71 @@ def _tokens(text: str) -> set[str]:
 _STOPWORDS = {"de", "la", "el", "del", "y", "a", "en", "los", "las", "un", "una", "es"}
 
 
-def _match_known_claim(claim: str) -> dict[str, Any] | None:
+def _extract_urls(claim: str) -> list[str]:
+    return _URL_RE.findall(claim.strip())
+
+
+def _normalize_domain(host: str) -> str:
+    host = host.lower().strip().rstrip(".")
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def _domain_from_url(url: str) -> str | None:
+    try:
+        parsed = urlparse(url)
+        if not parsed.netloc:
+            return None
+        return _normalize_domain(parsed.netloc)
+    except Exception:
+        return None
+
+
+def _find_trusted_by_domain(domain: str) -> dict[str, Any] | None:
+    domain = _normalize_domain(domain)
+    for source in TRUSTED_SOURCES:
+        src = _normalize_domain(source["domain"])
+        if domain == src or domain.endswith("." + src):
+            return source
+    return None
+
+
+def _trusted_from_claim(claim: str) -> list[dict[str, Any]]:
+    """Fuentes confiables cuyo dominio aparece en el texto o en URLs."""
+    found: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for url in _extract_urls(claim):
+        domain = _domain_from_url(url)
+        if not domain:
+            continue
+        source = _find_trusted_by_domain(domain)
+        if source and source["domain"] not in seen:
+            seen.add(source["domain"])
+            found.append(source)
+    # También dominio suelto en el texto (salud.gob.ec)
     text = _norm(claim)
+    for source in TRUSTED_SOURCES:
+        if source["domain"] in text and source["domain"] not in seen:
+            seen.add(source["domain"])
+            found.append(source)
+    return found
+
+
+def _is_url_only(claim: str) -> bool:
+    stripped = claim.strip()
+    urls = _extract_urls(stripped)
+    if not urls:
+        return False
+    remainder = _URL_RE.sub("", stripped).strip()
+    return remainder == ""
+
+
+def _match_known_claim(claim: str) -> dict[str, Any] | None:
+    # No cruzar KB contra una URL cruda (evita falsos positivos por tokens de query)
+    if _is_url_only(claim):
+        return None
+    text = _norm(_URL_RE.sub(" ", claim))
     best: dict[str, Any] | None = None
     best_score = 0.0
     for fact in KNOWN_CLAIMS:
@@ -68,8 +136,24 @@ def _match_sources(claim: str) -> list[dict[str, Any]]:
     text = _norm(claim)
     tokens = _tokens(text)
     matches: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for source in _trusted_from_claim(claim):
+        seen.add(source["domain"])
+        matches.append(
+            {
+                "name": source["name"],
+                "domain": source["domain"],
+                "url": source["url"],
+                "category": source["category"],
+                "match_type": "domain",
+                "similarity": 1.0,
+            }
+        )
 
     for source in TRUSTED_SOURCES:
+        if source["domain"] in seen:
+            continue
         name_norm = _norm(source["name"])
         match_type: str | None = None
         similarity = 0.0
@@ -106,6 +190,7 @@ def _build_explanation(
     negated: bool,
     nlp: dict[str, Any],
     source_matches: list[dict[str, Any]],
+    trusted_url_sources: list[dict[str, Any]],
 ) -> str:
     if fact is not None:
         if negated:
@@ -115,8 +200,26 @@ def _build_explanation(
             )
         return fact["explanation"]
 
+    if _is_url_only(claim) and trusted_url_sources:
+        names = " / ".join(s["name"] for s in trusted_url_sources[:3])
+        return (
+            f"El enlace pertenece a un medio o institución de referencia ({names}). "
+            "No se descargó el artículo completo, así que no se puede verificar cada "
+            "afirmación del contenido; el dominio sí es confiable. "
+            "Pega el titular o el texto de la noticia para un análisis más preciso."
+        )
+
+    if _is_url_only(claim):
+        return (
+            "Solo se recibió un enlace. No se pudo contrastar el contenido del artículo "
+            "(el verificador no descarga páginas web). "
+            "Pega el texto o el titular de la noticia para verificar afirmaciones concretas."
+        )
+
+    signals = [
+        s for s in (nlp.get("suspicious_signals") or []) if s not in _WEAK_SIGNALS
+    ]
     parts: list[str] = []
-    signals = nlp.get("suspicious_signals") or []
     if signals:
         parts.append(
             "El análisis automático detectó señales de lenguaje manipulativo o "
@@ -135,7 +238,11 @@ def _build_explanation(
 
 
 def _resolve_verdict(
-    claim: str, fact: dict[str, Any] | None, negated: bool, nlp: dict[str, Any]
+    claim: str,
+    fact: dict[str, Any] | None,
+    negated: bool,
+    nlp: dict[str, Any],
+    trusted_url_sources: list[dict[str, Any]],
 ) -> tuple[str, float]:
     if fact is not None:
         verdict: str = fact["verdict"]
@@ -147,7 +254,17 @@ def _resolve_verdict(
                 verdict, confidence = "falso", min(0.99, confidence + 0.02)
         return verdict, confidence
 
-    signals = nlp.get("suspicious_signals") or []
+    # Enlace a medio confiable: no es "engañoso"; falta el texto del artículo
+    if _is_url_only(claim) and trusted_url_sources:
+        return "sin_evidencia", 0.78
+
+    if _is_url_only(claim):
+        return "sin_evidencia", 0.55
+
+    # engañoso solo por señales NLP fuertes (no por texto corto / solo enlace)
+    signals = [
+        s for s in (nlp.get("suspicious_signals") or []) if s not in _WEAK_SIGNALS
+    ]
     if signals:
         return "enganyoso", round(0.55 + 0.1 * min(len(signals), 3), 2)
     return "sin_evidencia", 0.5
@@ -165,9 +282,14 @@ async def verify_claim(claim: str) -> dict[str, Any]:
 
     fact = _match_known_claim(claim)
     negated = _has_negation(claim) if fact else False
-    verdict, confidence = _resolve_verdict(claim, fact, negated, nlp)
+    trusted_url_sources = _trusted_from_claim(claim) if _extract_urls(claim) else []
+    verdict, confidence = _resolve_verdict(
+        claim, fact, negated, nlp, trusted_url_sources
+    )
     source_matches = _match_sources(claim)
-    explanation = _build_explanation(claim, fact, negated, nlp, source_matches)
+    explanation = _build_explanation(
+        claim, fact, negated, nlp, source_matches, trusted_url_sources
+    )
 
     evidence_sources = []
     if fact:
@@ -189,6 +311,15 @@ async def verify_claim(claim: str) -> dict[str, Any]:
                 url = f"https://www.google.com/search?q={quote(name)}"
                 category = "referencia"
             evidence_sources.append({"name": name, "url": url, "category": category})
+    elif trusted_url_sources:
+        evidence_sources = [
+            {
+                "name": s["name"],
+                "url": s["url"],
+                "category": s["category"],
+            }
+            for s in trusted_url_sources
+        ]
 
     verdict_info = VERDICTS.get(verdict, VERDICTS["sin_evidencia"])
 

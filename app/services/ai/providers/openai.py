@@ -82,7 +82,13 @@ class OpenAICompatibleProvider(BaseAIProvider):
             ]
         )
 
-    async def analyze_image(self, image_path: str) -> dict[str, Any]:
+    async def analyze_image(
+        self,
+        image_path: str,
+        *,
+        filename: str | None = None,
+        claim: str | None = None,
+    ) -> dict[str, Any]:
         with open(image_path, "rb") as f:
             encoded = base64.b64encode(f.read()).decode("utf-8")
         prompt = (

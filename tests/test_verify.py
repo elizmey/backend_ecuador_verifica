@@ -41,9 +41,32 @@ def test_check_unknown_claim(client):
     resp = _check(client, "Mi vecino observó un ovni ayer sobre la ciudad de Cuenca")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["verdict"] in ("sin_evidencia", "enganyoso")
+    assert body["verdict"] == "sin_evidencia"
     assert body["evidence"]["fact_used"] is None
     assert body["explanation"]
+
+
+def test_check_trusted_news_url_is_not_enganyoso(client):
+    url = (
+        "https://www.thetimes.com/?utm_source=google&utm_campaign=test"
+        "&gclid=CjwKCAjws_DTBhB_EiwAXZknGVC3NQ01"
+    )
+    resp = _check(client, url)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["verdict"] == "sin_evidencia"
+    assert body["verdict"] != "enganyoso"
+    assert any(m["domain"] == "thetimes.com" for m in body["source_matches"])
+    assert "The Times" in body["explanation"]
+    assert "lenguaje_emocional" not in body["nlp"]["suspicious_signals"]
+
+
+def test_check_untrusted_url_only(client):
+    resp = _check(client, "https://sitio-desconocido-xyz-123.com/noticia-rara")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["verdict"] == "sin_evidencia"
+    assert "enlace" in body["explanation"].lower() or "enlace" in str(body["nlp"]).lower()
 
 
 def test_check_domain_source_matches(client):

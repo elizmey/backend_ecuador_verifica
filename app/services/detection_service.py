@@ -109,7 +109,11 @@ async def detect_image(file: UploadFile, claim: str | None = None) -> dict[str, 
     t0 = time.perf_counter()
     path = _save_temp_upload(file, settings.MAX_UPLOAD_SIZE_MB, ext)
     try:
-        analysis = await analyze_image(path)
+        analysis = await analyze_image(
+            path,
+            filename=original_name,
+            claim=claim,
+        )
     except AIProviderError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
